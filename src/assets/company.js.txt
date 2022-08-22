@@ -1,0 +1,268 @@
+const puppeteer = require('puppeteer');
+const mongoose = require('mongoose');
+var db = require('./connectdb.js')
+const CompanyModel=require('./oldCompany.model.js');
+const GroupModel=require('./group.model.js');
+const titleModel=require('./titleCompany.model.js');
+db.myConnection()
+
+
+
+var cacheLinks = {};
+(async () => {
+
+    const browser = await puppeteer.launch(
+        { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+        //{ headless: false }
+    )
+    const page = await browser.newPage();
+
+    var num = await GroupModel.find();
+    var numPage = num.length;
+
+    for (let i = 0; i < numPage; i++) {
+        let result = num[i].name
+        const idGroup = num[i]._id
+        result = result.trim()
+        cacheLinks[result] = idGroup;
+    }
+
+    const numCom = await titleModel.countDocuments();
+    const numComDid1=await CompanyModel.countDocuments();
+    var numComDid=Math.floor(numComDid1/10);
+    const pageCount = Math.floor(numCom / 10);
+
+
+    for (let i = numComDid; i < pageCount; i++) {
+        const list = await titleModel.find({}, { _id: 0, code: 1, name: 1 }).limit(10).skip(10 * i)
+        var results = []
+        for (let j = 0; j < list.length; j++) {
+            const linkPage = list[j].code;
+            const NameCom=list[j].name;
+            console.log("Doing "+((i*10)+j)+": "+linkPage);
+            var Check=await verifyPage(linkPage,page,NameCom);
+            var result;
+
+            if (Check===0)
+            {
+                result= await pageError(linkPage,NameCom);
+            }
+            else
+            {
+                result = await getDetailCompany(linkPage, page);
+            }
+            results.push(result);
+
+        }
+        await CompanyModel.insertMany(results);
+    }
+ 
+    browser.close();
+    db.close();
+})();
+
+async function verifyPage(link,page,NameCom)
+{
+    await page.goto(link, { waitUntil: 'load', timeout: 0 });
+    await sleep(1500);
+    let tenCty = await page.$$('.tencongty');
+    if (tenCty.length <= 0)
+    {
+        return 0;
+    }
+    else
+    {
+        let ten = await tenCty[0].evaluate((el) => el.textContent)
+        if (ten!=NameCom)
+        {
+            return 0;   
+        }
+        else
+        {
+            return 1;
+        }
+    }
+}
+
+async function getDetailCompany(link,page) {
+
+    let Com = new CompanyModel()
+
+    let tenCty = await page.$$('.tencongty')
+    let ten = await tenCty[0].evaluate((el) => el.textContent)
+
+    let khungLogo=await page.$$('.logo_chitietcongty')
+    if (khungLogo.length>0)
+    {
+        let logo=await khungLogo[0].$$('img')
+        let logoLink=await logo[0].evaluate((el)=>el.getAttribute("href"));
+        Com.logoLink=logoLink;
+    }
+
+    //console.log(ten)
+    let diaChitam = await page.$$('div.diachi_chitiet_li2dc > p')
+    let diaChi = await diaChitam[0].evaluate((el) => el.textContent)
+    diaChi = diaChi.trim();
+
+    let soDienThoaitam = await page.$$('div.diachi_chitiet_li2 > span')
+    let dienThoai = await soDienThoaitam[0].evaluate((el) => el.textContent)
+    dienThoai = dienThoai.trim();
+
+    let faxTam = await page.$$('.diachi_chitiet_li2 > p')
+    var fax = ""
+    if (faxTam.length > 0) {
+
+        fax = await faxTam[0].evaluate((el) => el.textContent)
+    }
+
+    let proCom=await diaChitam[0].$$('em')
+    let proCom1=await proCom[0].evaluate((el)=>el.textContent)
+
+    //console.log(diaChi)
+
+
+    let Sponsor;
+    let nhaTaiTro = await page.$$('.sponsor_text')
+    if (nhaTaiTro.length > 0) {
+        Sponsor = true;
+    } else {
+        Sponsor = false;
+    }
+
+    let verify;
+    let xacthuc = await page.$$('.logo_xacthuc_detail')
+    if (xacthuc.length > 0) {
+        verify = true;
+    } else {
+        verify = false;
+    }
+
+    var TTLHchitiet = {}
+    let TTLH = await page.$$('div[style=" width:298px; height:auto; border:#DDD; border-style:solid; border-width:1px; border-radius:4px 4px 4px 4px"]')
+
+    if (TTLH.length >= 0) {
+        const chiTietLHtieude = await page.$$('p[style="font-size:12px; color:#555; padding-top:7px"]')
+        const chiTietLHnoidung = await page.$$('div[style="height:23px;float:left"] > p')
+
+
+        for (let i = 0; i < chiTietLHtieude.length; i++) {
+            let tieude = await chiTietLHtieude[i].evaluate((el) => el.textContent)
+            let noidung = await chiTietLHnoidung[i].evaluate((el) => el.textContent)
+            TTLHchitiet[tieude] = noidung
+        }
+    }
+
+    var groupId = []
+
+    let ereasBusiness = await page.$$('.nganhgnhe_chitiet_text > p > a')
+    for (let i = 0; i < ereasBusiness.length; i++) {
+        let ereaName = await ereasBusiness[i].evaluate((el) => el.textContent)
+        ereaName = ereaName.trim();
+        let ereaId = cacheLinks[ereaName];
+        //console.log(ereaId);
+        groupId.push(ereaId);
+    }
+    //console.log(groupId);
+
+    var profileCom = {}
+
+    let profileLocation = await page.$$('.hosocongty_li')
+    for (let i = 0; i < profileLocation.length; i++) {
+        let profileTile1 = await profileLocation[i].$$('.hosocongty_tite_text');
+        let profileTile = await profileTile1[0].evaluate((el) => el.textContent);
+
+        let profileDetail1 = await profileLocation[i].$$('.hosocongty_text')
+        let profileDetail = await profileDetail1[0].evaluate((el) => el.textContent);
+        profileCom[profileTile] = profileDetail;
+    }
+
+    let gioiThieuCty = await page.$$('.gioithieucongty > p')
+    var gioiThieuCtyDetail = ""
+    if (gioiThieuCty.length > 0) {
+
+        gioiThieuCtyDetail = await gioiThieuCty[0].evaluate((el) => el.textContent)
+    }
+
+    var listSanPham = []
+
+    let sanPhams = await page.$$('.productName > a')
+    for (let i = 0; i < sanPhams.length; i++) {
+        let doiTuongSP = {
+            name: String,
+            imgUrl: String,
+        }
+        let tenSP1 = await sanPhams[i].evaluate((el) => el.textContent);
+        doiTuongSP.name = tenSP1;
+        let linkPic = await sanPhams[i].evaluate((el) => el.getAttribute('href'));
+        doiTuongSP.imgUrl = linkPic;
+        listSanPham.push(doiTuongSP);
+        //listSanPham[tenSP1]=linkPic;
+    }
+
+    let listDichVu = []
+    let dichVus = await page.$$('.sp_khongphannhom_name > a, .tensanphamdichvu_name > a')
+    for (let i = 0; i < dichVus.length; i++) {
+        let itemService = {
+            name: String,
+            serviceUrl: String,
+        };
+        let tenDichVu = await dichVus[i].evaluate((el) => el.textContent);
+        let linkDichVu = await dichVus[i].evaluate((el) => el.getAttribute('href'));
+        itemService.name = tenDichVu;
+        itemService.serviceUrl = linkDichVu;
+        listDichVu.push(itemService);
+    }
+
+    let Web = await page.$$('.text_website > p > a')
+    for (let i = 0; i < Web.length; i++) {
+        var linkWeb = await Web[0].evaluate((el) => el.textContent)
+    }
+
+    let mail = await page.$$('.text_email > p > a')
+    for (let i = 0; i < mail.length; i++) {
+        var linkMail = await mail[0].evaluate((el) => el.getAttribute('href'))
+        linkMail=linkMail.replace("mailto:","")
+    }
+
+    Com.companyName = ten
+    Com.companyLink = link
+    Com.Sponsor = Sponsor
+    Com.verified = verify
+    Com.diachi = diaChi
+    Com.province=proCom1
+    Com.thongTinLienHe = TTLHchitiet
+    Com.group = groupId
+    Com.hoSoCongTy = profileCom
+    Com.gioiThieu = gioiThieuCtyDetail
+    Com.sanPham = listSanPham
+    Com.dichVu = listDichVu
+    Com.website = linkWeb
+    Com.phoneNum= dienThoai
+    Com.email=linkMail
+    Com.fax=fax
+    
+
+    return Com; 
+}
+
+
+async function pageError(link,name)
+{
+
+    let Com = {
+        companyName: String,
+        companyLink: String,
+    }
+
+    Com.companyName=name;
+    Com.companyLink=link;
+    return Com;
+}
+
+function sleep(time) {
+    return new Promise(function (resolve, reject) {
+        setTimeout(() => {
+            resolve('ok');
+        }, time);
+    });
+}

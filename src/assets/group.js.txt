@@ -1,0 +1,196 @@
+const puppeteer = require('puppeteer');
+const mongoose = require('mongoose');
+var db = require('./connectdb.js');
+var GroupModel = require('./group2.model.js');
+db.myConnection()
+
+
+var links = [];
+var checkGroup = {};
+(async () => {
+    var today = new Date();
+    var day = today.getDate();
+    var work = false;
+    console.log(day);
+    await doWork();
+    while (1==1)
+        if (day == 1 || day == 15) {
+            if (work == false) {
+                await doWork();
+            }
+
+            else{
+                console.log("waitting 1");
+                await sleep(3600000);
+                
+            }
+        }
+        else
+        {
+            work=false;
+            console.log("waitting 2");
+            await sleep(3600000);
+        }
+})();
+
+function sleep(time) {
+    return new Promise(function (resolve, reject) {
+        setTimeout(() => {
+            resolve('ok');
+        }, time);
+    });
+}
+async function getLimitPage(link, page) {
+    await page.goto(link, { waitUntil: 'load', timeout: 0 })
+    await sleep(500)
+    let linkListBt = await page.$$('#paging')
+    let listBt = await linkListBt[0].$$('a')
+    const limitPage = await listBt[listBt.length - 2].evaluate((el) => el.textContent)
+    return limitPage
+}
+async function doWork()
+{
+    
+
+    console.log("Doing now");
+    const browser = await puppeteer.launch(
+        //{ args: ['--no-sandbox', '--disable-setuid-sandbox','--proxy-server=103.171.113.48:20686:nguyenmanhtien.bh:1ee93edba5c911c33'] }
+        { headless: false },
+        //{ args: ['--proxy-server=103.171.112.27:20686']}
+    )
+    const page = await browser.newPage();
+    //Đi đến trang các danh mục công ty, mở theo từng trang, có 21 trang
+    const numPage = await getLimitPage("https://trangvangvietnam.com/findex.asp", page);
+    for (let i = 1; i <= numPage; i++) {
+
+        //Đi đến trang thứ i
+        await page.goto('https://trangvangvietnam.com/findex.asp?page=' + i)
+        await sleep(500)
+
+        //Lọc ra các phần tử là các đối tượng danh mục
+        const titleCom = await page.$$('[style*="color:#00C"]');
+
+        //Lấy link các danh mục, tên danh mục
+        for (let i = 0; i < titleCom.length; i++) {
+            let result = await titleCom[i].evaluate((el) => el.textContent)
+            const link = await titleCom[i].evaluate((el) => el.getAttribute('href'))
+            result = result.trim()
+            let newGroup = new GroupModel({
+                name: result,
+                code: link,
+                //level: 1,
+                isHome: true,
+            })
+            await newGroup.save()
+            links.push(newGroup);
+            checkGroup[newGroup.code] = newGroup._id;
+        }
+    }
+    console.log(checkGroup)
+    //console.log(links);
+
+    //Truy cập vào từng danh mục theo danh sách link đã lấy được
+    for (let i = 0; i < links.length; i++) {
+        //Lấy số trang công ty của danh mục
+        await page.goto(links[i].code, { waitUntil: 'load', timeout: 0 })
+        let addGroup = await page.$$('#newlocnganhnghe > p')
+        var childArray = []
+        var expandArray=[]
+        var tagArray=[]
+        var status=0;
+        for (let i = 2; i < addGroup.length; i++) {
+            var titleGr = await addGroup[i].evaluate((el) => el.textContent)
+            titleGr = titleGr.trim()
+            if (titleGr === "Tỉnh/ Thành Phố" || titleGr === "Ngành xem thêm" || titleGr === "Tag ngành nghề"||titleGr === "Nhóm sản phẩm") {
+                if(titleGr === "Nhóm sản phẩm"){
+                    status=1;
+                    continue;
+                }
+                if(titleGr === "Ngành xem thêm"){
+                    status=2;
+                    continue;
+                }
+                if(titleGr === "Tag ngành nghề"){
+                    status=3;
+                    continue;
+                }
+                if(titleGr === "Tỉnh/ Thành Phố"){
+                    status=4;
+                    continue;
+                }
+            }
+            else {
+                if (status==1) {
+                    const addGroup1 = await addGroup[i].$$('a')
+                    let title = await addGroup1[0].evaluate((el) => el.textContent)
+                    const link = await addGroup1[0].evaluate((el) => el.getAttribute('href'))
+                    const num = await addGroup1[0].$$('span')
+                    const rmString = await num[0].evaluate((el) => el.textContent)
+                    title = title.replace(rmString, "")
+
+                    let newSubGroup = new GroupModel({
+                        name: title,
+                        code: link,
+                        //level: 1,
+                        parent: checkGroup[links[i].code],
+                        isHome: false,
+                    })
+
+                    if (checkGroup[newSubGroup.code] != null) {
+                        await GroupModel.findByIdAndUpdate({ _id: checkGroup[newSubGroup.code] }, { $push: { parent: checkGroup[links[i].code]}});
+                        //await GroupModel.findByIdAndUpdate({ _id: checkGroup[newSubGroup.code] },{level:links[i].level+1});
+                        //links[]
+                    }
+                    else {
+                        await newSubGroup.save();
+                        links.push(newSubGroup);
+                        checkGroup[newSubGroup.code] = newSubGroup._id;
+                    }
+                    childArray.push(checkGroup[newSubGroup.code]);
+                }
+                if (status==2){
+                    const addGroup1 = await addGroup[i].$$('a')
+                    let title = await addGroup1[0].evaluate((el) => el.textContent)
+                    const link = await addGroup1[0].evaluate((el) => el.getAttribute('href'))
+                    const num = await addGroup1[0].$$('span')
+                    const rmString = await num[0].evaluate((el) => el.textContent)
+                    title = title.replace(rmString, "")
+
+                    let newSubGroup = new GroupModel({
+                        name: title,
+                        code: link,
+                        //level: links[i].level+1,
+                        parent: checkGroup[links[i].code],
+                        isHome: false,
+                    })
+
+                    if (checkGroup[newSubGroup.code] == null) {
+                        await newSubGroup.save();
+                        links.push(newSubGroup);
+                        checkGroup[newSubGroup.code] = newSubGroup._id;
+                    }
+                    expandArray.push(checkGroup[newSubGroup.code]);
+                }
+                if (status==3){
+                    const addGroup1 = await addGroup[i].$$('a')
+                    let title = await addGroup1[0].evaluate((el) => el.textContent)
+                    const link = await addGroup1[0].evaluate((el) => el.getAttribute('href'))
+
+                    var tag={
+                        code:link,
+                        name:title,
+                    }
+                    tagArray.push(tag)
+                }
+                if (status==4){continue}
+            }
+        }
+        await GroupModel.findByIdAndUpdate({ _id: links[i]._id }, { $push: { groupChild: childArray } });
+        await GroupModel.findByIdAndUpdate({ _id: links[i]._id }, { $push: { groupsExpand: expandArray } });
+        await GroupModel.findByIdAndUpdate({ _id: links[i]._id }, { $push: { groupsTag: tagArray } });
+
+    }
+    browser.close();
+    db.close();
+    work = true;
+}
