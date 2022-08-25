@@ -127,7 +127,7 @@ class UserManage extends Component {
                         currentUser={this.state.userEdit}
                         editUser={this.doEditUser}
                     />
-                }s
+                }
                 <div className='title text-center'>Manage users with Eric</div>
                 <div className='mx-1'>
                     <button
