@@ -18,9 +18,9 @@ class About extends Component {
                         <iframe width="100%" height="400px"
                             src="https://www.youtube.com/embed/wm_T5nUXINU?list=RDwm_T5nUXINU"
                             title="THẦY HIỆU TRƯỞNG - LK ft MC ILL & WOWY (OFFICIAL MV)"
-                            frameborder="0"
+                            frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowfullscreen></iframe>
+                            allowFullScreen></iframe>
                     </div>
 
                     <div className='content-right'>
