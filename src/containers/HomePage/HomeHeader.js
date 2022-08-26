@@ -3,7 +3,6 @@ import { connect } from 'react-redux';
 import './HomeHeader.scss';
 import { FormattedMessage } from 'react-intl';
 import { LANGUAGES } from "../../utils/constant"
-
 import { changeLanguageApp } from '../../store/actions/appActions';
 
 class HomeHeader extends Component {
@@ -14,6 +13,7 @@ class HomeHeader extends Component {
 
     render() {
         let language = this.props.language
+
         return (
             <React.Fragment>
                 <div className='home-header-container'>
@@ -48,8 +48,12 @@ class HomeHeader extends Component {
                         <div className='right-content'>
                             <div className='support'><i className="fas fa-question-circle"></i>
                                 <FormattedMessage id="homeheader.support" /></div>
-                            <div className={language === LANGUAGES.VI ? 'language-vi active' : 'language-vi'}><span onClick={() => this.changeLanguage(LANGUAGES.VI)}>VN</span></div>
-                            <div className={language === LANGUAGES.EN ? 'language-en active' : 'language-en'}><span onClick={() => this.changeLanguage(LANGUAGES.EN)}>EN</span></div>
+                            <div
+                                className={language === LANGUAGES.VI ? 'language-vi active' : 'language-vi'}>
+                                <span onClick={() => this.changeLanguage(LANGUAGES.VI)}>VN</span></div>
+                            <div
+                                className={language === LANGUAGES.EN ? 'language-en active' : 'language-en'}>
+                                <span onClick={() => this.changeLanguage(LANGUAGES.EN)}>EN</span></div>
 
                         </div>
 
